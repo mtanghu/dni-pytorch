@@ -133,7 +133,7 @@ class BackwardInterface(UnidirectionalInterface):
         else:
             return trigger
 
-    def backward(self, trigger, factor=1):
+    def backward(self, trigger, factor=1, retain_graph = False):
         """Backpropagates synthetic gradient from `trigger`.
 
         Computes synthetic gradient based on `trigger`, scales it by `factor`
@@ -149,7 +149,7 @@ class BackwardInterface(UnidirectionalInterface):
         """
         if self.training:
             synthetic_gradient = self.receive(trigger)
-            _Manager.backward(trigger, synthetic_gradient.data * factor)
+            _Manager.backward(trigger, synthetic_gradient.data * factor, retain_graph = retain_graph)
 
     def make_trigger(self, trigger):
         """Attaches a synthetic gradient update operation to `trigger`.
@@ -353,7 +353,7 @@ class BasicSynthesizer(torch.nn.Module):
 
 
 @contextmanager
-def defer_backward():
+def defer_backward(retain_graph = False):
     """Defers backpropagation until the end of scope.
 
     Accumulates all gradients passed to `dni.backward` inside the scope and
@@ -375,7 +375,7 @@ def defer_backward():
 
         if _Manager.deferred_gradients:
             (variables, gradients) = zip(*_Manager.deferred_gradients)
-            torch.autograd.backward(variables, gradients)
+            torch.autograd.backward(variables, gradients, retain_graph = retain_graph)
     finally:
         _Manager.reset_defer_backward()
 
@@ -406,14 +406,14 @@ class _Manager:
         cls.deferred_gradients = []
 
     @classmethod
-    def backward(cls, variable, gradient=None):
+    def backward(cls, variable, gradient=None, retain_graph=False):
         if gradient is None:
             gradient = _ones_like(variable.data)
 
         if cls.defer_backward:
             cls.deferred_gradients.append((variable, gradient))
         else:
-            variable.backward(gradient)
+            variable.backward(gradient, retain_graph=retain_graph)
 
     @classmethod
     def get_current_context(cls):
